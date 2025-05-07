@@ -4,11 +4,11 @@ import torch
 import datetime
 
 class Config:
-    # 資料和路徑設定
-    DATA_DIR = "./"
-    IMG_DIR = "./iclevr"
-    OUTPUT_DIR = "output"
-    RUN_ID = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    # 基礎路徑設定
+    DATA_DIR = "./"                   # 資料檔案基礎目錄
+    IMG_DIR = "./iclevr"              # 訓練圖像存放目錄
+    OUTPUT_DIR = "output"             # 輸出結果的基礎目錄
+    RUN_ID = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")  # 執行ID，用時間戳記
 
     # Wandb設定
     USE_WANDB = True
@@ -16,53 +16,52 @@ class Config:
     WANDB_PROJECT = "conditional-ddpm(v4)"
     WANDB_NAME = ""
     
-    # 目錄設定 (將在run_id確定後更新)
-    # RUN_DIR = os.path.join(OUTPUT_DIR, f"{RUN_ID}" + f"({WANDB_ID})" if USE_WANDB else "")  # 將被設為: output/{RUN_ID}({WANDB_ID})
-    RUN_DIR = None # 將被設為: output/{RUN_ID}({WANDB_ID})
-    CHECKPOINT_DIR = None
-    IMAGES_DIR = None
-    EVAL_DIR = None
-    LOG_DIR = None
+    # 動態生成的目錄路徑
+    RUN_DIR = None                    # 將被設為: output/{RUN_ID}({WANDB_ID})
+    CHECKPOINT_DIR = None             # 檢查點儲存目錄
+    IMAGES_DIR = None                 # 生成圖像儲存目錄
+    EVAL_DIR = None                   # 評估結果儲存目錄
+    LOG_DIR = None                    # 日誌檔案儲存目錄
     
-    # 資料集文件
-    TRAIN_JSON = "train.json"
-    TEST_JSON = "test.json"
-    NEW_TEST_JSON = "new_test.json"
-    OBJECTS_JSON = "objects.json"
-    IMAGE_SIZE = 64
+    # 資料集檔案
+    TRAIN_JSON = "train.json"         # 訓練資料標籤文件
+    TEST_JSON = "test.json"           # 測試資料標籤文件 
+    NEW_TEST_JSON = "new_test.json"   # 額外測試資料標籤文件
+    OBJECTS_JSON = "objects.json"     # 物件定義文件
+    IMAGE_SIZE = 64                   # 圖像大小 (64x64)
     
-    # 模型架構參數
-    VAE_MODEL = "stabilityai/sd-vae-ft-mse"
-    LATENT_CHANNELS = 4  # 潛在空間的通道數
-    CONDITION_DIM = 256  # 條件嵌入維度
-    NUM_CLASSES = 24  # 物件類別數
+    # 模型架構設定
+    VAE_MODEL = "stabilityai/sd-vae-ft-mse"  # 預訓練VAE模型
+    LATENT_CHANNELS = 4               # 潛在空間的通道數
+    CONDITION_DIM = 64                # 條件嵌入維度
+    NUM_CLASSES = 24                  # 物件類別數 (24 = 8色 x 3形)
     
     # 擴散過程參數
-    NUM_TRAIN_TIMESTEPS = 100
-    NUM_INFERENCE_STEPS = 50  # DDIM採樣步數
-    BETA_SCHEDULE = "squaredcos_cap_v2"  # beta排程
-    PREDICTION_TYPE = "v_prediction"  # 預測類型
+    NUM_TRAIN_TIMESTEPS = 1000         # 訓練時擴散時間步數
+    NUM_INFERENCE_STEPS = 75           # DDIM採樣步數
+    BETA_SCHEDULE = "squaredcos_cap_v2"  # beta噪聲排程方式
+    PREDICTION_TYPE = "epsilon"  # 預測類型: "epsilon" or "v_prediction"
     
     # 訓練參數
-    RESUME = None  # 恢復檢查點的路徑
-    # RESUME = "output/2023-10-01_12-00-00/checkpoints/epoch_100.pth"
-    BATCH_SIZE = 128
-    NUM_EPOCHS = 300
-    LEARNING_RATE = 3e-5
-    WEIGHT_DECAY = 1e-5
-    FP16 = False  # 使用混合精度訓練
-    GRAD_CLIP = 1.0  # 梯度裁剪
-    SEED = 42
-    SAVE_EVERY = 10  # 每N個epoch儲存檢查點
-    EVAL_EVERY = 10  # 每N個epoch評估模型
+    RESUME = None                     # 恢復訓練的檢查點路徑
+    # RESUME = "output/2023-10-01_12-00-00/checkpoints/epoch_100.pth"    
+    BATCH_SIZE = 128                  # 批次大小
+    NUM_EPOCHS = 500                  # 訓練輪數
+    LEARNING_RATE = 3e-5              # 學習率
+    WEIGHT_DECAY = 1e-5               # 權重衰減係數
+    FP16 = False                      # 混合精度訓練開關
+    GRAD_CLIP = 0.5                   # 梯度裁剪閾值
+    SEED = 42                         # 隨機種子
+    SAVE_EVERY = 10                   # 每10輪儲存一次檢查點
+    EVAL_EVERY = 10                   # 每10輪評估一次模型
     
-    # 硬體設定
+    # 硬體相關
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    NUM_WORKERS = 4
+    NUM_WORKERS = 4                   # 數據載入的工作線程數
     
     # 採樣參數
-    GUIDANCE_SCALE = 7.5  # Classifier-free guidance強度
-    CLASSIFIER_SCALE = 1.0  # 分類器引導強度
+    GUIDANCE_SCALE = 7.5              # 無條件引導強度(CFG) Classifier-free guidance
+    CLASSIFIER_SCALE = 1.0            # 分類器引導強度
     
     @classmethod
     def update_paths(cls, wandb_id=None):

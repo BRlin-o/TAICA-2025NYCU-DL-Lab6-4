@@ -9,4 +9,6 @@ wheels/
 # venv
 .venv
 iclevr/*.png
-output
+output/
+output*/
+wandb

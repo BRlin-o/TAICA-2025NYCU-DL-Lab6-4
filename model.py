@@ -7,6 +7,7 @@ from diffusers import DDPMScheduler, DDIMScheduler
 from diffusers.utils import BaseOutput
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
+from config import Config
 
 # 自定義擴散模型輸出格式
 @dataclass
@@ -19,9 +20,10 @@ class LDMOutput(BaseOutput):
 class ConditionalLDM(nn.Module):
     def __init__(
         self,
-        num_labels=24,
-        condition_dim=64,
-        vae_model_path="stabilityai/sd-vae-ft-mse",
+        num_labels=None,
+        condition_dim=None,
+        vae_model_path=None,
+        use_config=True
     ):
         """
         條件式潛擴散模型
@@ -30,11 +32,28 @@ class ConditionalLDM(nn.Module):
             num_labels (int): 標籤數量
             condition_dim (int): 條件嵌入維度
             vae_model_path (str): 預訓練VAE模型路徑/名稱
+            use_config (bool): 是否使用Config類中的參數
         """
         super().__init__()
         
+        # 從Config讀取參數或使用提供的參數
+        if use_config:
+            self.num_labels = num_labels or Config.NUM_CLASSES
+            self.condition_dim = condition_dim or Config.CONDITION_DIM
+            self.vae_model_path = vae_model_path or Config.VAE_MODEL
+            self.num_train_timesteps = Config.NUM_TRAIN_TIMESTEPS
+            self.beta_schedule = Config.BETA_SCHEDULE
+            self.prediction_type = Config.PREDICTION_TYPE
+        else:
+            self.num_labels = num_labels or 24
+            self.condition_dim = condition_dim or 64
+            self.vae_model_path = vae_model_path or "stabilityai/sd-vae-ft-mse"
+            self.num_train_timesteps = 1000
+            self.beta_schedule = "squaredcos_cap_v2"
+            self.prediction_type = "v_prediction"
+        
         # 1. 加載預訓練VAE
-        self.vae = AutoencoderKL.from_pretrained(vae_model_path)
+        self.vae = AutoencoderKL.from_pretrained(self.vae_model_path)
         
         # 凍結VAE參數
         for param in self.vae.parameters():
@@ -51,7 +70,7 @@ class ConditionalLDM(nn.Module):
             nn.Dropout(0.1),
             nn.Linear(512, 256),
             nn.SiLU(),
-            nn.Linear(256, condition_dim),
+            nn.Linear(256, self.condition_dim),
             nn.SiLU(),
         )
         
@@ -75,24 +94,22 @@ class ConditionalLDM(nn.Module):
                 "CrossAttnUpBlock2D",
             ),
             attention_head_dim=8,  # 定義注意力頭數
-            cross_attention_dim=condition_dim,
+            cross_attention_dim=self.condition_dim,
         )
         
         # 4. 噪聲調度器
         self.noise_scheduler = DDPMScheduler(
-            num_train_timesteps=1000,
-            beta_schedule="squaredcos_cap_v2",
-            # prediction_type="epsilon",
-            prediction_type="v_prediction",  # 使用v-prediction
+            num_train_timesteps=self.num_train_timesteps,
+            beta_schedule=self.beta_schedule,
+            prediction_type=self.prediction_type,
             clip_sample=False
         )
         
         # 5. 採樣調度器
         self.sampler = DDIMScheduler(
-            num_train_timesteps=1000,
-            beta_schedule="squaredcos_cap_v2",
-            # prediction_type="epsilon",
-            prediction_type="v_prediction",  # 使用v-prediction
+            num_train_timesteps=self.num_train_timesteps,
+            beta_schedule=self.beta_schedule,
+            prediction_type=self.prediction_type,
             clip_sample=False,
         )
         
@@ -150,7 +167,9 @@ class ConditionalLDM(nn.Module):
         ).sample
         
         # 5. 計算損失
-        loss = F.mse_loss(noise_pred, noise)
+        # loss = F.mse_loss(noise_pred, noise)
+        latent_loss = 0.1 * torch.mean(latents.pow(2))
+        loss = F.mse_loss(noise_pred, noise) + latent_loss
         
         return loss
     
@@ -160,8 +179,8 @@ class ConditionalLDM(nn.Module):
         labels, 
         batch_size=1, 
         generator=None,
-        guidance_scale=7.5,
-        num_inference_steps=50
+        guidance_scale=None,
+        num_inference_steps=None
     ):
         """
         條件圖像生成
@@ -177,6 +196,9 @@ class ConditionalLDM(nn.Module):
             images: 生成的圖像
         """
         device = self.unet.device
+
+        guidance_scale = guidance_scale or Config.GUIDANCE_SCALE
+        num_inference_steps = num_inference_steps or Config.NUM_INFERENCE_STEPS
         
         # 準備採樣器
         self.sampler.set_timesteps(num_inference_steps, device=device)
@@ -229,7 +251,7 @@ class ConditionalLDM(nn.Module):
 
 
 class ClassifierGuidedLDM(nn.Module):
-    def __init__(self, ldm_model, classifier, cfg_scale=7.5, cls_scale=1.0):
+    def __init__(self, ldm_model, classifier, cfg_scale=None, cls_scale=None):
         """
         帶分類器引導的LDM模型
         
@@ -242,8 +264,8 @@ class ClassifierGuidedLDM(nn.Module):
         super().__init__()
         self.ldm = ldm_model
         self.classifier = classifier
-        self.cfg_scale = cfg_scale
-        self.cls_scale = cls_scale
+        self.cfg_scale = cfg_scale if cfg_scale is not None else Config.GUIDANCE_SCALE
+        self.cls_scale = cls_scale if cls_scale is not None else Config.CLASSIFIER_SCALE
         
     @torch.no_grad()
     def generate(
@@ -251,7 +273,7 @@ class ClassifierGuidedLDM(nn.Module):
         labels, 
         batch_size=1, 
         generator=None,
-        num_inference_steps=50
+        num_inference_steps=None
     ):
         """
         帶分類器引導的圖像生成
@@ -266,6 +288,8 @@ class ClassifierGuidedLDM(nn.Module):
             images: 生成的圖像
         """
         device = self.ldm.unet.device
+
+        num_inference_steps = num_inference_steps or Config.NUM_INFERENCE_STEPS
         
         # 準備採樣器
         self.ldm.sampler.set_timesteps(num_inference_steps, device=device)

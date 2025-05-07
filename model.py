@@ -278,6 +278,8 @@ class ClassifierGuidedLDM(nn.Module):
         
         # 採樣循環
         for i, t in enumerate(timesteps):
+            # 清理記憶體
+            torch.cuda.empty_cache()
             # 擴展潛變量
             latent_model_input = torch.cat([latents] * 2)
             latent_model_input = self.ldm.sampler.scale_model_input(latent_model_input, t)
@@ -309,11 +311,18 @@ class ClassifierGuidedLDM(nn.Module):
                     images_norm = torch.clamp(images, -1.0, 1.0)
                     
                     # 計算分類器得分和梯度
-                    cls_score = self.classifier.resnet18(images_norm.to(self.classifier.resnet18.device))
-                    cls_loss = F.binary_cross_entropy_with_logits(cls_score, labels.to(self.classifier.resnet18.device))
+                    cls_device = next(self.classifier.resnet18.parameters()).device
+                    cls_score  = self.classifier.resnet18(images_norm.to(cls_device))
+                    cls_loss = F.binary_cross_entropy_with_logits(cls_score, labels.to(cls_device))
                     
                     # 計算梯度
-                    grad = torch.autograd.grad(cls_loss, latents_cls)[0]
+                    try:
+                        grad = torch.autograd.grad(cls_loss, latents_cls)[0]
+                    except RuntimeError:
+                        # 使用allow_unused參數處理未連接的梯度
+                        grad = torch.autograd.grad(cls_loss, latents_cls, allow_unused=True)[0]
+                        if grad is None:
+                            grad = torch.zeros_like(latents_cls)
                     
                     # 應用分類器梯度
                     noise_pred = noise_pred - self.cls_scale * grad

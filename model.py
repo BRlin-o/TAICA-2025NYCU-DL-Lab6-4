@@ -45,7 +45,11 @@ class ConditionalLDM(nn.Module):
         
         # 2. 條件嵌入層
         self.condition_embedding = nn.Sequential(
-            nn.Linear(num_labels, 256),
+            nn.Linear(num_labels, 512),
+            nn.SiLU(),
+            nn.LayerNorm(512),  # 增加層標準化
+            nn.Dropout(0.1),
+            nn.Linear(512, 256),
             nn.SiLU(),
             nn.Linear(256, condition_dim),
             nn.SiLU(),
@@ -56,7 +60,7 @@ class ConditionalLDM(nn.Module):
             sample_size=16,  # 64/4=16 (VAE降維)
             in_channels=latent_channels,
             out_channels=latent_channels,
-            layers_per_block=2,
+            layers_per_block=3,
             block_out_channels=(128, 256, 384, 512),
             down_block_types=(
                 "CrossAttnDownBlock2D",
@@ -70,6 +74,7 @@ class ConditionalLDM(nn.Module):
                 "CrossAttnUpBlock2D",
                 "CrossAttnUpBlock2D",
             ),
+            attention_head_dim=8,  # 定義注意力頭數
             cross_attention_dim=condition_dim,
         )
         
@@ -77,14 +82,18 @@ class ConditionalLDM(nn.Module):
         self.noise_scheduler = DDPMScheduler(
             num_train_timesteps=1000,
             beta_schedule="squaredcos_cap_v2",
-            prediction_type="epsilon",
+            # prediction_type="epsilon",
+            prediction_type="v_prediction",  # 使用v-prediction
+            clip_sample=False
         )
         
         # 5. 採樣調度器
         self.sampler = DDIMScheduler(
             num_train_timesteps=1000,
             beta_schedule="squaredcos_cap_v2",
-            prediction_type="epsilon",
+            # prediction_type="epsilon",
+            prediction_type="v_prediction",  # 使用v-prediction
+            clip_sample=False,
         )
         
     def encode(self, pixel_values):
@@ -298,34 +307,62 @@ class ClassifierGuidedLDM(nn.Module):
             noise_pred_cond, noise_pred_uncond = noise_pred.chunk(2)
             noise_pred = noise_pred_uncond + self.cfg_scale * (noise_pred_cond - noise_pred_uncond)
             
-            # 分類器引導 (如果啟用)
-            if self.cls_scale > 0 and t < timesteps[0] * 0.8:  # 只在後期階段應用分類器引導
-                # 需要計算梯度
+            # 分類器引導部分改進
+            if self.cls_scale > 0 and i > len(timesteps) * 0.2:  # 在生成過程的後80%應用
+                # 自適應調整分類器引導強度 (後期更強)
+                progress = 1.0 - i / len(timesteps)  # 從0到1，表示接近完成度
+                adaptive_cls_scale = self.cls_scale * (0.5 + 1.5 * progress)  # 從0.5到2倍的cls_scale
+                
                 with torch.enable_grad():
                     latents_cls = latents.detach().requires_grad_(True)
                     
-                    # 臨時解碼為圖像
-                    images = self.ldm.decode(latents_cls)
+                    # 解碼為圖像
+                    latents_scaled = 1 / 0.18215 * latents_cls
+                    with torch.no_grad():
+                        images = self.ldm.vae.decode(latents_scaled).sample
                     
-                    # 標準化以符合分類器
+                    # 標準化
                     images_norm = torch.clamp(images, -1.0, 1.0)
                     
-                    # 計算分類器得分和梯度
+                    # 應用分類器
                     cls_device = next(self.classifier.resnet18.parameters()).device
-                    cls_score  = self.classifier.resnet18(images_norm.to(cls_device))
-                    cls_loss = F.binary_cross_entropy_with_logits(cls_score, labels.to(cls_device))
+                    cls_score = self.classifier.resnet18(images_norm.to(cls_device))
+                    
+                    # 改進損失函數：加權二元交叉熵 + 餘弦相似度
+                    # 1. 加權BCE
+                    bce_loss = F.binary_cross_entropy_with_logits(
+                        cls_score, labels.to(cls_device),
+                        pos_weight=torch.ones_like(labels).to(cls_device) * 2.0  # 加權正例
+                    )
+                    
+                    # 2. 計算餘弦相似度損失 (讓預測向量方向更接近標籤)
+                    pred_norm = torch.sigmoid(cls_score)
+                    target_norm = labels.to(cls_device)
+                    cosine_loss = 1.0 - F.cosine_similarity(pred_norm, target_norm, dim=1).mean()
+                    
+                    # 組合損失
+                    cls_loss = bce_loss + cosine_loss * 0.5
                     
                     # 計算梯度
                     try:
-                        grad = torch.autograd.grad(cls_loss, latents_cls)[0]
-                    except RuntimeError:
-                        # 使用allow_unused參數處理未連接的梯度
                         grad = torch.autograd.grad(cls_loss, latents_cls, allow_unused=True)[0]
                         if grad is None:
                             grad = torch.zeros_like(latents_cls)
+                        
+                        # 梯度規範化
+                        grad_norm = torch.norm(grad)
+                        if grad_norm > 0:
+                            grad = grad / grad_norm * min(grad_norm, 1.0)
+                        
+                        # 應用梯度
+                        noise_pred = noise_pred - adaptive_cls_scale * grad
+                        
+                        # 調試信息
+                        if i % 10 == 0:
+                            print(f"時間步 {t}: BCE={bce_loss.item():.4f}, Cosine={cosine_loss.item():.4f}, 梯度範數={grad_norm.item():.4f}")
                     
-                    # 應用分類器梯度
-                    noise_pred = noise_pred - self.cls_scale * grad
+                    except Exception as e:
+                        print(f"分類器引導出錯 (時間步 {t}): {e}")
             
             # 更新採樣
             latents = self.ldm.sampler.step(noise_pred, t, latents).prev_sample

@@ -7,20 +7,22 @@ import torchvision
 from PIL import Image, ImageDraw, ImageFont
 import matplotlib.pyplot as plt
 
-def setup_logging(args):
+def setup_logging(log_dir, run_id):
     """設置日誌記錄"""
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, f"{run_id}.log")
+    
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
+        handlers=[
+            logging.FileHandler(log_file),
+            logging.StreamHandler()
+        ]
     )
-    logger = logging.getLogger(__name__)
-    
-    # 添加文件處理程序
-    log_file = os.path.join(args.output_dir, 'training.log')
-    file_handler = logging.FileHandler(log_file)
-    file_handler.setLevel(logging.INFO)
-    logger.addHandler(file_handler)
+    logger = logging.getLogger(run_id)
+    logger.info(f"開始運行: {run_id}")
     
     return logger
 

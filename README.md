@@ -47,5 +47,5 @@ python train.py --data_dir ./ --img_dir ./iclevr --output_dir ./output --vae_mod
 ## 生成圖像
 
 ```bash
-python generate.py --data_dir ./ --output_dir ./output --checkpoint ./output/checkpoint_epoch_200.pth --vae_model stabilityai/sd-vae-ft-mse --guidance_scale 7.5 --cls_scale 1.0 --steps 100 --visualize_denoising
+python generate.py --data_dir ./ --output_dir ./output --checkpoint ./output/checkpoint_epoch_300.pth --vae_model stabilityai/sd-vae-ft-mse --guidance_scale 7.5 --cls_scale 1.0 --steps 100 --visualize_denoising
 ```

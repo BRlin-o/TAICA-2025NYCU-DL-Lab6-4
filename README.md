@@ -41,7 +41,8 @@
 ## 訓練模型
 
 ```bash
-python train.py --data_dir ./ --img_dir ./iclevr --output_dir ./output --vae_model stabilityai/sd-vae-ft-mse --batch_size 64 --epochs 300 --lr 3e-5 --save_every 10 --fp16
+python -m main train
+python -m main train --use_wandb
 ```
 
 ## 生成圖像

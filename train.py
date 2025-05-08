@@ -90,6 +90,11 @@ def train(args):
     # 混合精度訓練
     scaler = torch.amp.GradScaler('cuda') if Config.FP16 else None
     
+    if Config.DEVICE.type == 'cuda':
+        torch.backends.cudnn.benchmark = True  # 為固定大小輸入優化CUDNN
+        logger.info("CUDNN Benchmarking enabled")
+
+    
     # 開始訓練
     logger.info("Starting training...")
     

@@ -68,9 +68,9 @@ class ConditionalLDM(nn.Module):
             nn.SiLU(),
             nn.LayerNorm(512),  # 增加層標準化
             nn.Dropout(0.1),
-            nn.Linear(512, 256),
+            nn.Linear(512, 512),
             nn.SiLU(),
-            nn.Linear(256, self.condition_dim),
+            nn.Linear(512, self.condition_dim),
             nn.SiLU(),
         )
         
@@ -85,15 +85,15 @@ class ConditionalLDM(nn.Module):
                 "CrossAttnDownBlock2D",
                 "CrossAttnDownBlock2D",
                 "CrossAttnDownBlock2D",
-                "DownBlock2D",
+                "CrossAttnDownBlock2D",
             ),
             up_block_types=(
-                "UpBlock2D",
+                "CrossAttnUpBlock2D",
                 "CrossAttnUpBlock2D",
                 "CrossAttnUpBlock2D",
                 "CrossAttnUpBlock2D",
             ),
-            attention_head_dim=8,  # 定義注意力頭數
+            attention_head_dim=32,  # 定義注意力頭數
             cross_attention_dim=self.condition_dim,
         )
         
@@ -112,6 +112,14 @@ class ConditionalLDM(nn.Module):
             prediction_type=self.prediction_type,
             clip_sample=False,
         )
+
+        def _init_weights(module):
+            if isinstance(module, (nn.Linear, nn.Conv2d)):
+                torch.nn.init.kaiming_normal_(module.weight, nonlinearity='relu')
+                if module.bias is not None:
+                    torch.nn.init.zeros_(module.bias)
+
+        self.apply(_init_weights)
         
     def encode(self, pixel_values):
         """圖像編碼為潛變量"""
@@ -332,10 +340,11 @@ class ClassifierGuidedLDM(nn.Module):
             noise_pred = noise_pred_uncond + self.cfg_scale * (noise_pred_cond - noise_pred_uncond)
             
             # 分類器引導部分改進
-            if self.cls_scale > 0 and i > len(timesteps) * 0.2:  # 在生成過程的後80%應用
+            # if self.cls_scale > 0 and i > len(timesteps) * 0.2:  # 在生成過程的後80%應用
+            if self.cls_scale > 0:  # 在生成過程的後80%應用
                 # 自適應調整分類器引導強度 (後期更強)
                 progress = 1.0 - i / len(timesteps)  # 從0到1，表示接近完成度
-                adaptive_cls_scale = self.cls_scale * (0.5 + 1.5 * progress)  # 從0.5到2倍的cls_scale
+                adaptive_cls_scale = self.cls_scale * (1.0 + 2.0 * progress)  # 從0.5到2倍的cls_scale
                 
                 with torch.enable_grad():
                     latents_cls = latents.detach().requires_grad_(True)

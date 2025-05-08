@@ -14,7 +14,7 @@ class Config:
     USE_WANDB = True
     WANDB_ID = None  # 將在使用wandb時設置
     WANDB_PROJECT = "conditional-ddpm(v4)"
-    WANDB_NAME = ""
+    WANDB_NAME = "RTX4080"
     
     # 動態生成的目錄路徑
     RUN_DIR = None                    # 將被設為: output/{RUN_ID}({WANDB_ID})
@@ -33,12 +33,27 @@ class Config:
     # 模型架構設定
     VAE_MODEL = "stabilityai/sd-vae-ft-mse"  # 預訓練VAE模型
     LATENT_CHANNELS = 4               # 潛在空間的通道數
-    CONDITION_DIM = 64                # 條件嵌入維度
+    CONDITION_DIM = 256               # 條件嵌入維度
     NUM_CLASSES = 24                  # 物件類別數 (24 = 8色 x 3形)
+    LAYERS_PER_BLOCK = 3              # 每個Block的層數
+    BLOCK_OUT_CHANNELS = (128, 256, 384, 512)
+    DOWN_BLOCK_TYPES = (
+        "CrossAttnDownBlock2D",
+        "CrossAttnDownBlock2D",
+        "CrossAttnDownBlock2D",
+        "DownBlock2D",
+    )
+    UP_BLOCK_TYPES = (
+        "UpBlock2D",
+        "CrossAttnDownBlock2D",
+        "CrossAttnDownBlock2D",
+        "CrossAttnDownBlock2D",
+    )
+    ATTENTION_HEAD_DIM = 32
     
     # 擴散過程參數
     NUM_TRAIN_TIMESTEPS = 1000         # 訓練時擴散時間步數
-    NUM_INFERENCE_STEPS = 75           # DDIM採樣步數
+    NUM_INFERENCE_STEPS = 100           # DDIM採樣步數
     BETA_SCHEDULE = "squaredcos_cap_v2"  # beta噪聲排程方式
     PREDICTION_TYPE = "epsilon"  # 預測類型: "epsilon" or "v_prediction"
     
@@ -46,22 +61,24 @@ class Config:
     RESUME = None                     # 恢復訓練的檢查點路徑
     # RESUME = "output/2023-10-01_12-00-00/checkpoints/epoch_100.pth"    
     BATCH_SIZE = 128                  # 批次大小
-    NUM_EPOCHS = 500                  # 訓練輪數
-    LEARNING_RATE = 3e-5              # 學習率
+    NUM_EPOCHS = 150                  # 訓練輪數
+    LEARNING_RATE = 3e-4              # 學習率
     WEIGHT_DECAY = 1e-5               # 權重衰減係數
     FP16 = False                      # 混合精度訓練開關
     GRAD_CLIP = 0.5                   # 梯度裁剪閾值
     SEED = 42                         # 隨機種子
-    SAVE_EVERY = 10                   # 每10輪儲存一次檢查點
-    EVAL_EVERY = 10                   # 每10輪評估一次模型
+    SAVE_EVERY = 20                   # 每10輪儲存一次檢查點
+    EVAL_EVERY = 2                   # 每10輪評估一次模型
     
     # 硬體相關
     DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-    NUM_WORKERS = 4                   # 數據載入的工作線程數
+    NUM_WORKERS = 12                   # 數據載入的工作線程數
+    PIN_MEMORY = True  # 添加此設定
+
     
     # 採樣參數
-    GUIDANCE_SCALE = 7.5              # 無條件引導強度(CFG) Classifier-free guidance
-    CLASSIFIER_SCALE = 1.0            # 分類器引導強度
+    GUIDANCE_SCALE = 9              # 無條件引導強度(CFG) Classifier-free guidance
+    CLASSIFIER_SCALE = 3            # 分類器引導強度
     
     @classmethod
     def update_paths(cls, wandb_id=None):

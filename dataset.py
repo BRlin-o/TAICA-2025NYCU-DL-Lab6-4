@@ -61,7 +61,10 @@ class ICLEVRDataset(Dataset):
         # 創建one-hot標籤
         one_hot = torch.zeros(len(self.obj2idx))
         for obj in labels:
-            one_hot[self.obj2idx[obj]] = 1.0
+            one_hot[self.obj2idx[obj]] = 0.95
+
+        # 增加標籤平滑化
+        one_hot[one_hot == 0] = 0.01 / (len(self.obj2idx) - len(labels))
             
         # 讀取圖像(訓練)
         if self.is_train and self.img_dir is not None:
@@ -82,7 +85,9 @@ class ICLEVRDataset(Dataset):
             shuffle=shuffle,
             num_workers=num_workers,
             pin_memory=True,
-            collate_fn=collate_fn
+            collate_fn=collate_fn,
+            persistent_workers=True,  # 保持工作進程存活
+            prefetch_factor=2  # 預取因子
         )
 
 

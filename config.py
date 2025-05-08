@@ -53,16 +53,17 @@ class Config:
     
     # 擴散過程參數
     NUM_TRAIN_TIMESTEPS = 1000         # 訓練時擴散時間步數
-    NUM_INFERENCE_STEPS = 100           # DDIM採樣步數
+    NUM_INFERENCE_STEPS = 50           # DDIM採樣步數
     BETA_SCHEDULE = "squaredcos_cap_v2"  # beta噪聲排程方式
-    PREDICTION_TYPE = "epsilon"  # 預測類型: "epsilon" or "v_prediction"
+    PREDICTION_TYPE = "v_prediction"  # 預測類型: "epsilon" or "v_prediction"
+    CFG_DROPOUT_P = 0.1
     
     # 訓練參數
     RESUME = None                     # 恢復訓練的檢查點路徑
     # RESUME = "output/2023-10-01_12-00-00/checkpoints/epoch_100.pth"    
-    BATCH_SIZE = 128                  # 批次大小
+    BATCH_SIZE = 64                  # 批次大小
     NUM_EPOCHS = 150                  # 訓練輪數
-    LEARNING_RATE = 3e-4              # 學習率
+    LEARNING_RATE = 3e-5              # 學習率
     WEIGHT_DECAY = 1e-5               # 權重衰減係數
     FP16 = False                      # 混合精度訓練開關
     GRAD_CLIP = 0.5                   # 梯度裁剪閾值
@@ -77,8 +78,8 @@ class Config:
 
     
     # 採樣參數
-    GUIDANCE_SCALE = 9              # 無條件引導強度(CFG) Classifier-free guidance
-    CLASSIFIER_SCALE = 3            # 分類器引導強度
+    GUIDANCE_SCALE = 7.5              # 無條件引導強度(CFG) Classifier-free guidance
+    CLASSIFIER_SCALE = 1.5            # 分類器引導強度
     
     @classmethod
     def update_paths(cls, wandb_id=None):

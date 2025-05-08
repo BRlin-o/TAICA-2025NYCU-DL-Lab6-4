@@ -15,8 +15,12 @@ from config import Config
 def normalize_for_evaluator(images):
     """正確標準化張量以用於評估器"""
     # 確保值在[-1,1]範圍內
-    images = torch.clamp(images, -1.0, 1.0)
-    return images
+    # 1. [-1,1] → [0,1]
+    images = (images + 1) / 2
+    # 2. 依規定做 Normalize((0.5,0.5,0.5),(0.5,0.5,0.5)) ⇒ [-1,1]
+    normalize = transforms.Normalize((0.5, 0.5, 0.5),
+                                     (0.5, 0.5, 0.5))
+    return normalize(images)
 
 def evaluate_model(
     model=None,
@@ -150,7 +154,7 @@ def evaluate_model(
             eval_dir = os.path.join(save_dir, "eval")
             os.makedirs(eval_dir, exist_ok=True)
             grid_path = os.path.join(eval_dir, f"{test_name}_grid.png")
-            save_images(all_images[:min(32, len(all_images))], None, grid_path, nrow=4)
+            save_images(all_images[:min(32, len(all_images))], None, grid_path, nrow=8)
             logger.info(f"網格圖像已保存至: {grid_path}")
             
             # 保存單獨圖像

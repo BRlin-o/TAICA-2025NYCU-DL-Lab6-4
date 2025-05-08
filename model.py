@@ -85,10 +85,10 @@ class ConditionalLDM(nn.Module):
                 "CrossAttnDownBlock2D",
                 "CrossAttnDownBlock2D",
                 "CrossAttnDownBlock2D",
-                "CrossAttnDownBlock2D",
+                "DownBlock2D",
             ),
             up_block_types=(
-                "CrossAttnUpBlock2D",
+                "UpBlock2D",
                 "CrossAttnUpBlock2D",
                 "CrossAttnUpBlock2D",
                 "CrossAttnUpBlock2D",
@@ -173,11 +173,17 @@ class ConditionalLDM(nn.Module):
             timesteps, 
             encoder_hidden_states=condition_embedding
         ).sample
+
+        if self.prediction_type == "v_prediction":
+            target = self.noise_scheduler.get_velocity(latents, noise, timesteps)
+        else:                                       # 兼容 epsilon 與 x0 設定
+            target = noise
         
         # 5. 計算損失
         # loss = F.mse_loss(noise_pred, noise)
-        latent_loss = 0.1 * torch.mean(latents.pow(2))
-        loss = F.mse_loss(noise_pred, noise) + latent_loss
+        # latent_loss = 0.1 * torch.mean(latents.pow(2))
+        # loss = F.mse_loss(noise_pred, noise) + latent_loss
+        loss = F.mse_loss(noise_pred.float(), target.float(), reduction="mean")
         
         return loss
     
@@ -340,11 +346,10 @@ class ClassifierGuidedLDM(nn.Module):
             noise_pred = noise_pred_uncond + self.cfg_scale * (noise_pred_cond - noise_pred_uncond)
             
             # 分類器引導部分改進
-            # if self.cls_scale > 0 and i > len(timesteps) * 0.2:  # 在生成過程的後80%應用
-            if self.cls_scale > 0:  # 在生成過程的後80%應用
+            if self.cls_scale > 0 and i > len(timesteps) * 0.2:  # 在生成過程的後80%應用
                 # 自適應調整分類器引導強度 (後期更強)
                 progress = 1.0 - i / len(timesteps)  # 從0到1，表示接近完成度
-                adaptive_cls_scale = self.cls_scale * (1.0 + 2.0 * progress)  # 從0.5到2倍的cls_scale
+                adaptive_cls_scale = self.cls_scale * (0.5 + 1.5 * progress)  # 從0.5到2倍的cls_scale
                 
                 with torch.enable_grad():
                     latents_cls = latents.detach().requires_grad_(True)

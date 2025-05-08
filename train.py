@@ -5,7 +5,7 @@ import numpy as np
 import wandb
 from tqdm import tqdm
 from torch.optim import AdamW
-from torch.optim.lr_scheduler import CosineAnnealingLR, LinearLR, SequentialLR
+from torch.optim.lr_scheduler import CosineAnnealingLR
 from torchvision import transforms
 from dataset import get_dataset, get_transforms, iclevr_collate_fn
 from model import ConditionalLDM
@@ -85,23 +85,7 @@ def train(args):
         lr=Config.LEARNING_RATE, 
         weight_decay=Config.WEIGHT_DECAY
     )
-    # lr_scheduler = CosineAnnealingLR(optimizer, T_max=Config.NUM_EPOCHS)
-    # 創建預熱+余弦退火排程
-    warmup_scheduler = LinearLR(
-        optimizer, 
-        start_factor=0.1, 
-        end_factor=1.0, 
-        total_iters=int(0.05 * Config.NUM_EPOCHS)  # 5%時間預熱
-    )
-    cosine_scheduler = CosineAnnealingLR(
-        optimizer, 
-        T_max=Config.NUM_EPOCHS - int(0.05 * Config.NUM_EPOCHS)
-    )
-    lr_scheduler = SequentialLR(
-        optimizer, 
-        schedulers=[warmup_scheduler, cosine_scheduler],
-        milestones=[int(0.05 * Config.NUM_EPOCHS)]
-    )
+    lr_scheduler = CosineAnnealingLR(optimizer, T_max=Config.NUM_EPOCHS)
     
     # 混合精度訓練
     scaler = torch.amp.GradScaler('cuda') if Config.FP16 else None
@@ -122,6 +106,12 @@ def train(args):
                 # 移動數據到設備
                 pixel_values = batch['pixel_values'].to(Config.DEVICE)
                 labels = batch['labels'].to(Config.DEVICE)
+
+                # --- (b) Class‑Free dropout ---
+                if Config.CFG_DROPOUT_P:
+                    drop_mask = (torch.rand(labels.size(0), 1, device=labels.device)
+                                < Config.CFG_DROPOUT_P)
+                    labels = torch.where(drop_mask, torch.zeros_like(labels), labels)
                 
                 # 清除梯度
                 optimizer.zero_grad()
